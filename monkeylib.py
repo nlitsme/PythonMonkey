@@ -62,6 +62,12 @@ class Monkey:
         if foundchar:
             return buf
 
+    def keyevent(self, key):
+        self.send("press %d" % key)
+
+    def sendtext(self, txt):
+        self.send("type %s" % txt)
+
     def wake(self):
         self.send("wake")
 
@@ -100,4 +106,17 @@ class Monkey:
         self.touch("down", pos)
         time.sleep(0.05)
         self.touch("up", pos)
+
+    def listvar(self):
+        response = self.send("listvar")
+        if not response.startswith(b'OK:'):
+            return
+        return response[3:].decode('utf-8').split(" ")
+
+    def getvar(self, name):
+        response = self.send("getvar %s" % name)
+        if not response.startswith(b'OK:'):
+            # .. maybe raise exception with error msg ..
+            return
+        return response[3:].decode('utf-8')
 
