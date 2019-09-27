@@ -7,7 +7,8 @@ import struct
 import socket
 import re
 import select
-
+import os
+import time
 
 class ADBConnection:
     """
@@ -69,14 +70,12 @@ class ADBFrameCapture:
 
     The capture method returns a PIL Image object.
     """
-    def __init__(self, adb):
-        self.conn = None
+    def __init__(self, conn):
+        self.conn = conn
 
-        self.connect(adb.serialnr)
+        self.conenct()
 
-    def connect(self, serialnr):
-        self.conn = ADBConnection()
-        self.conn.send("host:transport:%s" % serialnr)
+    def connect(self):
         self.conn.send("framebuffer:")
         (
             self.version,       # '2'
@@ -131,9 +130,8 @@ class ADBShell:
     """
     Starts an adb shell connection.
     """
-    def __init__(self, adb, cmd):
-        self.conn = ADBConnection()
-        self.conn.send("host:transport:%s" % adb.serialnr)
+    def __init__(self, conn, cmd):
+        self.conn = conn
         self.conn.send("shell:%s" % cmd)
         #response = conn.read()
         #return response.decode('utf-8')
@@ -147,6 +145,93 @@ class ADBShell:
     def write(self, cmd):
         return self.conn.send(cmd)
 
+class ADBSync:
+    """
+    Use adb to transfer to and from the device.
+    """
+    def __init__(self, conn, usev2):
+        self.usev2 = usev2
+
+        self.conn = conn
+        self.conn.send("sync:")
+
+    def stat(self, fname):
+        fname = fname.encode('utf-8')
+        
+        self.conn.write(struct.pack("<4sL", b"STA2" if self.usev2 else b"STAT", len(fname)) + fname)
+        response = self.conn.read(72 if self.usev2 else 16)
+
+        if self.usev2:
+            (
+            magic, err, dev, ino, mode, nlink, uid, gid, size, atime, mtime, ctime 
+            ) = struct.unpack("<4s9L4Q", response)
+            if magic != b'STA2':
+                raise Exception("expected STA2 answer")
+        else:
+            magic, mode, size, mtime = struct.unpack("<4s3L", response)
+            if magic != b'STAT':
+                raise Exception("expected STAT answer")
+
+        return mode, size, mtime
+
+    def get(self, fname):
+        """
+        downloads / pulls a file from the device.
+        """
+        fname = fname.encode('utf-8')
+        self.conn.write(struct.pack("<4sL", b"RECV", len(fname)) + fname)
+
+        while True:
+            response = self.conn.read(8)
+            magic, datasize = struct.unpack("<4sL", response)
+            if magic == b'DONE':
+                break
+            if magic == b'FAIL':
+                errmsg = self.conn.read(datasize)
+                raise Exception("file error: %s" % errmsg.decode('utf-8'))
+            if magic != b"DATA":
+                print("m=%s" % magic)
+                raise Exception("expected DATA answer")
+
+            received = 0
+            while received < datasize:
+                data = self.conn.read(min(65536, datasize-received))
+                yield data
+                received += len(data)
+
+    def put(self, fname, fh):
+        """
+        uploads / pushes file to the device.
+        """
+        fname = fname.encode('utf-8')
+        self.conn.write(struct.pack("<4sL", b"SEND", len(fname)) + fname)
+        
+        while True:
+            data = fh.read(65536)
+            if not data:
+                break
+            self.conn.write(struct.pack("<4sL", b"DATA", len(data)))
+            self.conn.write(data)
+
+        self.conn.write(struct.pack("<4sL", b"DONE", int(time.time())))
+
+    def list(self, path):
+        """
+        yields a directory list
+        """
+        path = path.encode('utf-8')
+        self.conn.write(struct.pack("<4sL", b"LIST", len(path)) + path)
+
+        while True:
+            hdr = self.conn.read(20)
+            magic, mode, size, time, nlen = struct.unpack("<4s4L", hdr)
+            if magic == b'DONE':
+                break
+            if magic != b'DENT':
+                raise Exception("expected DENT or DONE header")
+            name = self.conn.read(nlen)
+
+            yield mode, size, time, name.decode('utf-8')
 
 class ADB:
     """
@@ -155,10 +240,46 @@ class ADB:
     def __init__(self):
         self.serialnr = None
 
-    def version(self):
+    def maketransport(self):
         conn = ADBConnection()
-        conn.send("host:version")
-        return conn.recv()
+        if self.serialnr:
+            conn.send("host:transport:%s" % self.serialnr)
+        else:
+            conn.send("host:transport-any")
+        return conn
+
+    def makecapture(self):
+        """
+        Create a screencapture object.
+        """
+        return ADBFrameCapture(self.maketransport())
+    def makeshell(self, cmd):
+        """
+        Create an interactive command shell object.
+        """
+        return ADBShell(self.maketransport(), cmd)
+    def makesync(self, v2):
+        """
+        Create a file sync object.
+        """
+        return ADBSync(self.maketransport(), v2)
+
+
+    def version(self):
+        """
+        Requests the adb version, and optionally launches the adb server.
+        """
+        for _ in range(2):
+            try:
+                conn = ADBConnection()
+                conn.send("host:version")
+                return conn.recv()
+            except:
+                if _ > 0:
+                    raise
+
+                # retry after starting server
+                os.system("adb start-server")
 
     def devices(self):
         """
@@ -174,25 +295,74 @@ class ADB:
                 yield m.group(1), m.group(2)
 
     def shell(self, cmd):
-        if not self.serialnr:
-            raise Exception("must set serialnr")
-        conn = ADBConnection()
-        conn.send("host:transport:%s" % self.serialnr)
-        conn.send("shell:%s" % cmd)
-        #response = conn.read()
-        #return response.decode('utf-8')
+        """
+        execute a shell command on the device.
+        """
+        sh = self.makeshell(cmd)
+        time.sleep(0.1)
+        return sh.read()
 
     def forward(self, local, remote):
+        """
+        forward a local port to a device port
+        """
         conn = ADBConnection()
         conn.send("host-serial:%s:forward:tcp:%d;tcp:%d" % (self.serialnr, local, remote))
 
-    def makecapture(self):
-        return ADBFrameCapture(self)
+    def getfeatures(self):
+        """
+        return a list of features.
+        """
+        conn = ADBConnection()
+        conn.send("host-serial:%s:features" % (self.serialnr))
 
-    def makeshell(self, cmd):
-        return ADBShell(self, cmd)
+        return conn.recv().split(",")
+
+    def reboot(self, into=None):
+        """
+        reboot the device in the specified mode.
+        """
+        conn = self.maketransport()
+        conn.send("reboot:%s" % (into or ""))
+
+    def remount(self, args=None):
+        """
+        remount system partition read-write
+        """
+        conn = self.maketransport()
+        conn.send("remount:%s" % (args or ""))
+
+    def root(self):
+        """
+        Restart adb as root
+        """
+        conn = self.maketransport()
+        conn.send("root:")
 
     def takeSnapshot(self):
         cap = self.makecapture()
         return cap.capture()
+
+def main():
+    adb = ADB()
+
+    adbsync = adb.makesync(True)
+
+    for ent in adbsync.list("/"):
+        print("%08x %08x %08x %s" % ent)
+
+    for fn in ("/init.rc", "/verity_key", "/", "/sdcard", "/sepolicy"):
+        try:
+            print("==>", fn, "<==")
+            for data in adbsync.get(fn):
+                print("%8d bytes" % len(data))
+        except Exception as e:
+            print("- %s" % e)
+
+    with open("bb-packettrace.txt", "rb") as fh:
+        adbsync.put("/sdcard/tstdata.dat", fh)
+
+
+if __name__=='__main__':
+    main()
 
