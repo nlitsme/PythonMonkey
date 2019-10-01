@@ -3,6 +3,8 @@ Module implementing the Android monkeyrunner api.
 """
 import time
 import re
+from adblib import ADB
+from monkeylib import Monkey
 
 
 def center(msg, width):
@@ -20,9 +22,11 @@ def quotespaces(x):
 class MonkeyRunner:
     """
     Main entry point for MonkeyRunner
+
+    This class has only static methods.
     """
     @staticmethod
-    def alert(self, message, title = "Alert", okTitle = "OK"):
+    def alert(message, title = "Alert", okTitle = "OK"):
         """
         Display an alert dialog to the process running the current script.  The dialog 
         is modal, so the script stops until the user dismisses the dialog.
@@ -40,7 +44,7 @@ class MonkeyRunner:
         input(okTitle + " (Press Enter)")
 
     @staticmethod
-    def choice(self, message, choices, title = "Input"):
+    def choice(message, choices, title = "Input"):
         """
         Display a choice dialog that allows the user to select a single item from a 
         list of items.
@@ -66,11 +70,13 @@ class MonkeyRunner:
                 if 0 <= r < len(choices):
                     return r
             except:
+                import traceback
+                traceback.print_exc()
                 pass
             print("invalid choice - %s" % r)
 
     @staticmethod
-    def help(self, format = "text"):
+    def help(format = "text"):
         """
         Format and display the API reference for MonkeyRunner.
 
@@ -81,7 +87,7 @@ class MonkeyRunner:
         # todo - see monkeyhelp.py
 
     @staticmethod
-    def input(self, message, initialValue = "", title = "Input", okTitle=None, cancelTitle=None):
+    def input(message, initialValue = "", title = "Input", okTitle=None, cancelTitle=None):
         """
         Display a dialog that accepts input. The dialog is ,modal, so the script stops 
         until the user clicks one of the two dialog buttons. To enter a value, the 
@@ -109,7 +115,7 @@ class MonkeyRunner:
         return input("--> ")
 
     @staticmethod
-    def loadImageFromFile(self, path):
+    def loadImageFromFile(path):
         """
         Loads a MonkeyImage from a file.
 
@@ -120,7 +126,7 @@ class MonkeyRunner:
         return MonkeyImage(PIL.load(path))
 
     @staticmethod
-    def sleep(self, seconds):
+    def sleep(seconds):
         """
         Pause the currently running program for the specified number of seconds.
 
@@ -131,7 +137,7 @@ class MonkeyRunner:
 
 
     @staticmethod
-    def waitForConnection(self, timeout, deviceId = ".*"):
+    def waitForConnection(timeout, deviceId = ".*"):
         """
         Waits for the workstation to connect to the device.
 
@@ -147,13 +153,18 @@ class MonkeyRunner:
             tend = tstart + timeout
 
         adb = ADB()
+        print("adb version = %s" % adb.version())
         while not timeout or time.time() < tend:
             for devid, state in adb.devices():
                 if state == 'device' and re.match(deviceId, devid):
                     adb.serialnr = devid
-                    return MonkeyDevice(adb)
+                    mlib = Monkey.launchmonkey(adb)
+
+                    if mlib:
+                        return MonkeyDevice(adb, mlib)
             time.sleep(0.2)
 
+# -- end of MonkeyRunner --
 
 class MonkeyDevice:
     """
@@ -173,9 +184,9 @@ class MonkeyDevice:
     MOVE = "move"
     UP = "up"
 
-    def __init__(self, adb):
+    def __init__(self, adb, mlib):
         self.adb = adb
-        self.mon = Monkey(12345)
+        self.mlib = mlib
 
     def broadcastIntent(self, uri=None, action=None, data=None, mimetype=None, categories=None, extras=None, component=None, flags=0):
         """
@@ -194,7 +205,7 @@ class MonkeyDevice:
                     The default value for each argument is null.(see android.content.
                     Context.sendBroadcast(Intent))
         """
-        adb.shell("am broadcast " + self.makeargs(uri, action, data, mimetype, categories, extras, component, flags))
+        self.adb.shell("am broadcast " + self.makeargs(uri, action, data, mimetype, categories, extras, component, flags))
 
     def startActivity(self, uri=None, action=None, data=None, mimetype=None, categories=None, extras=None, component=None, flags=0):
         """
@@ -215,7 +226,7 @@ class MonkeyDevice:
                     The default value for each argument is null.(see android.content.
                     Intent)
         """
-        adb.shell("am start " + self.makeargs(uri, action, data, mimetype, categories, extras, component, flags))
+        self.adb.shell("am start " + self.makeargs(uri, action, data, mimetype, categories, extras, component, flags))
 
     def makeargs(self, uri=None, action=None, data=None, mimetype=None, categories=None, extras=None, component=None, flags=0):
         args = []
@@ -225,14 +236,15 @@ class MonkeyDevice:
             args += ["-d", data]
         if mimetype:
             args += ["-t", mimetype]
-        for key, item in extras:
-            if type(item) == int:
-                argtype = "--ei"
-            elif type(item) == bool:
-                argtype = "--ei"
-            else:
-                argtype = "--es"
-            args += [argtype, key, str(item)]
+        if extras:
+            for key, item in extras:
+                if type(item) == int:
+                    argtype = "--ei"
+                elif type(item) == bool:
+                    argtype = "--ei"
+                else:
+                    argtype = "--es"
+                args += [argtype, key, str(item)]
         if component:
             args += ["-n", component]
         if flags:
@@ -253,7 +265,7 @@ class MonkeyDevice:
             steps - The number of steps to take when interpolating points. (default is 
                     10)
         """
-        self.mon.drag(start, end, duration, steps)
+        self.mlib.drag(start, end, duration, steps)
 
     def getHierarchyViewer(self):
         """
@@ -269,13 +281,13 @@ class MonkeyDevice:
             key - The name of the variable. The available names are listed in
                   http://developer.android.com/guide/topics/testing/monkeyrunner.html.
         """
-        return self.mon.getvar(key)
+        return self.mlib.getvar(key)
 
     def getPropertyList(self):
         """
         Retrieve the properties that can be queried
         """
-        return self.mon.listvar()
+        return self.mlib.listvar()
 
     def getRootView(self):
         """
@@ -336,8 +348,8 @@ class MonkeyDevice:
         """
 
         remotename = self.adb.shell("mktemp") + ".apk"
-        adb.uploadfile(path, remotename)
-        adb.shell("pm install -r \"%s\"" % remotename)
+        self.adb.uploadfile(path, remotename)
+        self.adb.shell("pm install -r \"%s\"" % remotename)
         # todo: check result.
         self.adb.shell("rm %s" % remotename)
 
@@ -373,9 +385,9 @@ class MonkeyDevice:
                    typing a key, send DOWN_AND_UP
         """
         if type==self.DOWN_AND_UP:
-            self.mon.keyevent(self.resolvekeyname(name))
+            self.mlib.keyevent(self.resolvekeyname(name))
         else:
-            self.mon.key(type, self.resolvekeyname(name))
+            self.mlib.key(type, self.resolvekeyname(name))
 
     def reboot(self, into=None):
         """
@@ -428,7 +440,10 @@ class MonkeyDevice:
             y - y coordinate in pixels
             type - touch event type as returned by TouchPressType()
         """
-        self.mon.touch(type, (x, y))
+        if type == self.DOWN_AND_UP:
+            self.mlib.tap((x, y))
+        else:
+            self.mlib.touch(type, (x, y))
 
     def type(self, message):
         """
@@ -438,14 +453,15 @@ class MonkeyDevice:
           Args:
             message - The string to send to the keyboard.
         """
-        self.mon.sendtext(message)
+        self.mlib.sendtext(message)
 
     def wake(self):
         """
         Wake up the screen on the device
         """
-        self.mon.wake()
+        self.mlib.wake()
 
+# -- end of MonkeyDevice --
 
 class MonkeyImage:
     """
@@ -481,9 +497,9 @@ class MonkeyImage:
             x - the x offset of the pixel
             y - the y offset of the pixel
         """
-        r, g, b = self.img.getpixel((x,y))
+        r, g, b, a = self.img.getpixel((x,y))
 
-        return 255, r, g, b
+        return a, r, g, b
 
     def getRawPixelInt(self, x, y):
         """
@@ -537,6 +553,8 @@ class MonkeyImage:
 
         self.img.save(path, format)
 
+# -- end of MonkeyImage --
+
 
 class MonkeyRect:
     """
@@ -574,7 +592,7 @@ class MonkeyRect:
         """
         return self.right - self.left
 
-
+# -- end of MonkeyRect --
 
 class MonkeyView:
     """
@@ -647,7 +665,7 @@ class MonkeyView:
             selected - The boolean value to set selected to
         """
 
-
+# -- end of MonkeyView --
 
 class EasyMonkeyDevice:
     """
@@ -715,7 +733,7 @@ class EasyMonkeyDevice:
             selector - The selector identifying the object.
         """
 
-
+# -- end of EasyMonkeyDevice -- 
 
 class By:
 
@@ -726,4 +744,6 @@ class By:
           Args:
             id - The identifier of the object.
         """
+
+# -- end of By --
 
