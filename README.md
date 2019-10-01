@@ -5,6 +5,24 @@ A python library for writing automatic UI testing tools.
 This module is a replacement for the Jython monkeyrunner library that comes with the Android SDK.
 
 
+## monkeyrunner compatibility layer
+
+The monkeyrunner module is (almost) a drop-in replacement for the com.android.monkeyrunner
+Jython module. There is an issue with python 2 vs 3 language compatibility. The Jython
+interpreter shipped with the android SDK is quite old, it supports python 2.5.3.
+This python version does not have any of tbe future compatibility features which came with
+v2.6 and v2.7. This makes writing code which works both on python 3.x and in the Jython
+environnent a bit more difficult. Mostly this means, you can not use the print function,
+and you will have to use `sys.exc_info()` to access the most recent exception.
+
+To be able to use this module, create a subdirectory `com/android`, and put a symbolic link
+to the monkeyrunner.py file there.
+
+Then run your monkey script using:
+
+    python3 mymonkey.py
+
+
 ## Android sdk tools
 
 ### monkeyrunner
@@ -20,6 +38,10 @@ Google sourcecode:
  * (chimpchat)[https://android.googlesource.com/platform/tools/swt/+/master/chimpchat/src/main/java/com/android/chimpchat]
 
 `monkeyrunner` uses two tools on the device to accomplish it's tasks: `adb` and `monkey`.
+
+To execute a Jython monkeyrunner script, type:
+
+    $ANDROID_HOME/tools/bin/monkeyrunner mymonkey.py
 
 
 ### monkey
