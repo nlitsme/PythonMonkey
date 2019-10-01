@@ -119,7 +119,7 @@ class Monkey:
         response = self.send("listvar")
         if not response.startswith('OK:'):
             return
-        return response[3:].split(" ")
+        return response[3:].rstrip(" ").split(" ")
 
     def getvar(self, name):
         response = self.send("getvar %s" % name)
