@@ -73,7 +73,7 @@ class ADBFrameCapture:
     def __init__(self, conn):
         self.conn = conn
 
-        self.conenct()
+        self.connect()
 
     def connect(self):
         self.conn.send("framebuffer:")
@@ -140,7 +140,9 @@ class ADBShell:
         self.conn.close()
 
     def read(self):
-        return self.conn.readavailable()
+        res = self.conn.readavailable()
+        if res:
+            return res.decode('utf-8')
 
     def write(self, cmd):
         return self.conn.send(cmd)
@@ -342,6 +344,28 @@ class ADB:
     def takeSnapshot(self):
         cap = self.makecapture()
         return cap.capture()
+
+    def connect(self):
+        print("adb version = %s" % self.version())
+        for serial, state in self.devices():
+            self.serialnr = serial
+
+
+    def devicestate(self):
+        sh = self.makeshell("dumpsys deviceidle")
+        time.sleep(0.2)
+        output = sh.read()
+        if not output:
+            return False, False, False
+
+        ok = output.find('mScreenOn=') >= 0 and output.find('mScreenLocked=') >= 0
+        screenon = output.find('mScreenOn=true') >= 0
+        screenlocked = output.find('mScreenLocked=true') >= 0
+
+        return ok, screenon, screenlocked
+
+
+
 
 def main():
     adb = ADB()
