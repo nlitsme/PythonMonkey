@@ -352,19 +352,19 @@ class ADB:
 
 
     def devicestate(self):
-        sh = self.makeshell("dumpsys deviceidle")
+        sh = self.makeshell("dumpsys nfc")
         time.sleep(0.2)
         output = sh.read()
         if not output:
             return False, False, False
 
-        ok = output.find('mScreenOn=') >= 0 and output.find('mScreenLocked=') >= 0
-        screenon = output.find('mScreenOn=true') >= 0
-        screenlocked = output.find('mScreenLocked=true') >= 0
+        i = output.find('mScreenState=')
+        if i==-1:
+            return
+        e = output.find('\n', i)
+        state = output[i+13:e].rstrip('\r')
 
-        return ok, screenon, screenlocked
-
-
+        return state
 
 
 def main():
