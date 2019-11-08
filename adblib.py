@@ -1,7 +1,10 @@
+"""
+Module which provides direct access to a adb service process.
+
+`adb` is the Android DeBug serivce. it can be used to interact 
+with an android device from your laptop.
+"""
 from __future__ import print_function, division
-"""
-See the adb/SERVICES.TXT file for what commands adb supports.
-"""
 import PIL.Image
 import struct
 import socket
@@ -129,6 +132,8 @@ class ADBFrameCapture:
 class ADBShell:
     """
     Starts an adb shell connection.
+
+    Note: not all features of the `shell` command are supported yet.
     """
     def __init__(self, conn, cmd):
         self.conn = conn
@@ -149,7 +154,7 @@ class ADBShell:
 
 class ADBSync:
     """
-    Use adb to transfer to and from the device.
+    Use adb to transfer files to and from the device.
     """
     def __init__(self, conn, usev2):
         self.usev2 = usev2
@@ -238,6 +243,8 @@ class ADBSync:
 class ADB:
     """
     Object for managing an adb connection to a specific device.
+
+    See the system_core:adb/SERVICES.TXT file for what commands adb supports.
     """
     def __init__(self):
         self.serialnr = None
@@ -267,6 +274,9 @@ class ADB:
         return ADBSync(self.maketransport(), v2)
 
     def exec(self, cmd):
+        """
+        `exec` can be used as an alternative to the `shell` command.
+        """
         conn = self.maketransport()
         conn.send("exec:%s" % cmd)
         time.sleep(0.1)
@@ -359,6 +369,10 @@ class ADB:
 
 
     def devicestate_devidle(self):
+        """
+        Alternative implementation if `devidle`, this time
+        by parsing the output of "dumpsys deviceidle".
+        """
         sh = self.makeshell("dumpsys deviceidle")
         time.sleep(0.2)
         output = sh.read()
@@ -380,6 +394,12 @@ class ADB:
             return 'OFF'
 
     def devicestate(self):
+        """
+        determines the locked/unlocked/off device state by parsing the output
+        of "dumpsys window"
+
+        I found that this is the method that works on most different platforms. 
+        """
         sh = self.makeshell("dumpsys window")
         time.sleep(0.2)
         output = sh.read()
@@ -395,6 +415,10 @@ class ADB:
 
 
     def devicestate_nfc(self):
+        """
+        Alternative implementation if `devidle`, this time
+        by parsing the output of "dumpsys nfc".
+        """
         sh = self.makeshell("dumpsys nfc")
         time.sleep(0.2)
         output = sh.read()
@@ -409,27 +433,4 @@ class ADB:
 
         return state
 
-
-def main():
-    adb = ADB()
-
-    adbsync = adb.makesync(True)
-
-    for ent in adbsync.list("/"):
-        print("%08x %08x %08x %s" % ent)
-
-    for fn in ("/init.rc", "/verity_key", "/", "/sdcard", "/sepolicy"):
-        try:
-            print("==>", fn, "<==")
-            for data in adbsync.get(fn):
-                print("%8d bytes" % len(data))
-        except Exception as e:
-            print("- %s" % e)
-
-    with open("bb-packettrace.txt", "rb") as fh:
-        adbsync.put("/sdcard/tstdata.dat", fh)
-
-
-if __name__=='__main__':
-    main()
 

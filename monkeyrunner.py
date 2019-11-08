@@ -1,5 +1,12 @@
 """
 Module implementing the Android monkeyrunner api.
+The interface exported by this module is exactly the api described here:
+
+    https://developer.android.com/studio/test/monkeyrunner
+
+This is implemented by using two lower level modules, monkeylib and adblib,
+which connect to respectively monkey.jar and the ADB Daemon.
+
 """
 import time
 import re

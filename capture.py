@@ -1,5 +1,6 @@
 """
-Script to take a screen capture from the attached android device.
+Script to take a screen capture from the attached android device
+using the `adb` `framebuffer` function.
 """
 from adblib import ADB
 from monkeylib import Monkey
