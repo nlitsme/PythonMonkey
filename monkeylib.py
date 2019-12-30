@@ -68,7 +68,7 @@ class Monkey:
             return buf
 
     def keyevent(self, key):
-        res = self.send("press %d" % key)
+        res = self.send("press %s" % key)
         return res == "OK"
 
     def sendtext(self, txt):
