@@ -381,7 +381,9 @@ class MonkeyDevice:
 
         # todo: parse 'instrument' result.
         return self.adb.shell(" ".join(quotespaces(_) for _ in cmdline))
-
+    def resolvekeyname(self, name):
+        if name=='KEYCODE_HOME':
+            return 3
     def press(self, name, type=DOWN_AND_UP):
         """
         Send a key event to the specified key
@@ -392,7 +394,8 @@ class MonkeyDevice:
                    typing a key, send DOWN_AND_UP
         """
         if type==self.DOWN_AND_UP:
-            self.mlib.keyevent(self.resolvekeyname(name))
+            #self.mlib.keyevent(self.resolvekeyname(name))
+            self.mlib.keyevent(name)
         else:
             self.mlib.key(type, self.resolvekeyname(name))
 
