@@ -71,6 +71,10 @@ class Monkey:
         res = self.send("press %s" % key)
         return res == "OK"
 
+    def key(self, type, key):
+        res = self.send("key %s %s" % (type, key))
+        return res == "OK"
+
     def sendtext(self, txt):
         res = self.send("type %s" % txt)
         return res == "OK"
