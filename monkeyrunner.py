@@ -536,6 +536,23 @@ class MonkeyImage:
         (x, y, w, h) = rect
         return MonkeyImage(self.img.crop( (x, y, x+w, y+h) ))
 
+
+    def rmsdiff(self, other):
+        """ Calculate the root-mean-square difference between two images
+
+          Args:
+            other - The other MonkeyImage object.
+        """
+        import math, operator
+        try:
+            import reduce
+        except:
+            from functools import reduce
+        h = PIL.ImageChops.difference(self.img, other.img).histogram()
+        return math.sqrt(reduce(operator.add,
+            map(lambda h, i: h*(i**2), h, range(256))
+        ) / (float(self.img.size[0]) * other.img.size[1]))
+
     def sameAs(self, other, percent=1.0):
         """
         Compare this MonkeyImage object to another MonkeyImage object.
