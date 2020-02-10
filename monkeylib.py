@@ -141,7 +141,7 @@ class Monkey:
 
         # or 'toybox killall'
         killres = adb.shell("killall -v com.android.commands.monkey") # use -v to report signal result
-        if killres and killres.find("not found") >= 0:
+        if killres and bool(re.search(r"killall:.*not found", killres)):
             pidline = adb.shell("ps | grep commands.monkey")
             if pidline:
                 m = re.match(r'^\w+\s+(\d+)', pidline)
