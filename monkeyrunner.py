@@ -10,6 +10,9 @@ which connect to respectively monkey.jar and the ADB Daemon.
 """
 import time
 import re
+import sys
+import PIL.Image
+import PIL.ImageChops
 from adblib import ADB
 from monkeylib import Monkey
 
@@ -130,7 +133,7 @@ class MonkeyRunner:
             path - The path to the file to load.  This file path is in terms of the 
                    computer running MonkeyRunner and not a path on the Android Device. 
         """
-        return MonkeyImage(PIL.load(path))
+        return MonkeyImage(PIL.Image.open(path))
 
     @staticmethod
     def sleep(seconds):
@@ -518,9 +521,8 @@ class MonkeyImage:
             x - the x offset of the pixel
             y - the y offset of the pixel
         """
-        r, g, b = self.img.getpixel((x,y))
-
-        return (255<<24) + (r<<16) + (g<<8) + b
+        r, g, b, _ = self.img.getpixel((x,y))
+        return int.from_bytes([b,g,r,255,255,255,255,255],byteorder=sys.byteorder, signed='True')
 
     def getSubImage(self, rect):
         """
@@ -534,9 +536,29 @@ class MonkeyImage:
         (x, y, w, h) = rect
         return MonkeyImage(self.img.crop( (x, y, x+w, y+h) ))
 
+
+    def rmsdiff(self, other):
+        """ Calculate the root-mean-square difference between two images
+
+          Args:
+            other - The other MonkeyImage object.
+        """
+        import math, operator
+        try:
+            import reduce
+        except:
+            from functools import reduce
+        h = PIL.ImageChops.difference(self.img, other.img).histogram()
+        return math.sqrt(reduce(operator.add,
+            map(lambda h, i: h*(i**2), h, range(256))
+        ) / (float(self.img.size[0]) * other.img.size[1]))
+
     def sameAs(self, other, percent=1.0):
         """
-        Compare this MonkeyImage object to aother MonkeyImage object.
+        Compare this MonkeyImage object to another MonkeyImage object.
+
+        This uses the same pixel-by-pixel binary counter as ChimpImageBase.
+        https://android.googlesource.com/platform/tools/swt/+/master/chimpchat/src/main/java/com/android/chimpchat/core/ChimpImageBase.java
 
           Args:
             other - The other MonkeyImage object.
@@ -544,7 +566,12 @@ class MonkeyImage:
                       pixels that need to be the same for the method to return 'true'. 
                       Defaults to 1.0.
         """
-        # todo
+        if (self.img.size != other.img.size): return False
+        numDiffPixels = 0
+        for tup in list(PIL.ImageChops.difference(self.img, other.img).getdata()):
+            if tup != (0,0,0,0) : numDiffPixels += 1
+        diffPercent = numDiffPixels / (self.img.size[0] * self.img.size[1])
+        return percent <= 1.0 - diffPercent
 
     def writeToFile(self, path, format=None):
         """
