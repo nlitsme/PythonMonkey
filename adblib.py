@@ -208,7 +208,7 @@ class ADBSync:
 
     def put(self, fname, fh):
         """
-        uploads / pushes file to the device.
+        Saves data from a stream to a remote file.
         """
         fname = fname.encode('utf-8')
         self.conn.write(struct.pack("<4sL", b"SEND", len(fname)) + fname)
@@ -221,6 +221,13 @@ class ADBSync:
             self.conn.write(data)
 
         self.conn.write(struct.pack("<4sL", b"DONE", int(time.time())))
+
+    def uploadfile(self, srcfile, remotename):
+        """
+        uploads / pushes data from a local file to a remote file.
+        """
+        with open(srcfile, "rb") as fh:
+            self.put(remotename, fh)
 
     def list(self, path):
         """
@@ -267,11 +274,12 @@ class ADB:
         Create an interactive command shell object.
         """
         return ADBShell(self.maketransport(), cmd)
-    def makesync(self, v2):
+
+    def makesync(self, usev2):
         """
         Create a file sync object.
         """
-        return ADBSync(self.maketransport(), v2)
+        return ADBSync(self.maketransport(), usev2)
 
     def exec(self, cmd):
         """

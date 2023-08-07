@@ -355,10 +355,15 @@ class MonkeyDevice:
 
           Args:
             path - The package's path and filename on the host filesystem.
+
+        see ddmlib/src/main/java/com/android/ddmlib/Device.java
         """
 
         remotename = self.adb.shell("mktemp") + ".apk"
-        self.adb.uploadfile(path, remotename)
+
+        adbsync = self.makesync(usev2=True)
+        adbsync.uploadfile(path, remotename)
+
         self.adb.shell("pm install -r \"%s\"" % remotename)
         # todo: check result.
         self.adb.shell("rm %s" % remotename)
