@@ -150,6 +150,7 @@ class Monkey:
                     killres = adb.shell("kill %d" % pid)
             else:
                 killres = 'process not found'
+        # todo - when killres is None, the 'killall' probably was never executed.
         print("kill->", killres)
         time.sleep(0.1)
         monkeycmd = adb.makeshell("monkey -v --script-log --port 12345")
